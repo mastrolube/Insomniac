@@ -9,6 +9,7 @@ from src.utils import *
 
 FOLLOWERS_BUTTON_ID_REGEX = 'com.instagram.android:id/row_profile_header_followers_container' \
                             '|com.instagram.android:id/row_profile_header_container_followers'
+TEXTVIEW_OR_BUTTON_REGEX = 'android.widget.TextView|android.widget.Button'
 
 
 def handle_blogger(device,
@@ -215,7 +216,8 @@ def _interact_with_user(device,
         print(COLOR_OKGREEN + "Private / empty account." + COLOR_ENDC)
         followed = _follow(device,
                            username,
-                           follow_percentage) if profile_filter.can_follow_private_or_empty() else False
+                           100)
+                           #follow_percentage) #if True profile_filter.can_follow_private_or_empty() else False
         if not followed:
             print(COLOR_OKGREEN + "Skip user." + COLOR_ENDC)
         return False, followed
@@ -309,15 +311,15 @@ def _follow(device, username, follow_percentage):
 
     random_sleep()
 
-    follow_button = device.find(className='android.widget.Button',
+    follow_button = device.find(classNameMatches=TEXTVIEW_OR_BUTTON_REGEX,
                                 clickable=True,
                                 text='Follow')
     if not follow_button.exists():
-        follow_button = device.find(className='android.widget.Button',
+        follow_button = device.find(classNameMatches=TEXTVIEW_OR_BUTTON_REGEX,
                                     clickable=True,
                                     text='Follow Back')
     if not follow_button.exists():
-        unfollow_button = device.find(className='android.widget.Button',
+        unfollow_button = device.find(classNameMatches=TEXTVIEW_OR_BUTTON_REGEX,
                                       clickable=True,
                                       text='Following')
         if unfollow_button.exists():
