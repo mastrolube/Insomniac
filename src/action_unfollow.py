@@ -16,7 +16,7 @@ def unfollow(device, count, on_unfollow, storage, unfollow_restriction, my_usern
 def _open_my_followings(device):
     print("Open my followings")
     followings_button = device.find(resourceId='com.instagram.android:id/row_profile_header_following_container',
-                                    className='android.widget.LinearLayout')
+                                    classNameMatches=TEXTVIEW_OR_BUTTON_REGEX)
     followings_button.click()
 
 
