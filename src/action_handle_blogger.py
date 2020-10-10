@@ -226,7 +226,7 @@ def _interact_with_user(device,
     recycler_view = device.find(resourceId='android:id/list')
     if not recycler_view.exists():
         print(COLOR_OKGREEN + "Private / empty account." + COLOR_ENDC)
-        if args.follow_if_no_photo == "on":
+        if True:
             followed = _follow(device,
                                username,
                                100)
