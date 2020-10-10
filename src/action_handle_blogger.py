@@ -10,6 +10,8 @@ from src.utils import *
 FOLLOWERS_BUTTON_ID_REGEX = 'com.instagram.android:id/row_profile_header_followers_container' \
                             '|com.instagram.android:id/row_profile_header_container_followers'
 TEXTVIEW_OR_BUTTON_REGEX = 'android.widget.TextView|android.widget.Button'
+FOLLOW_REGEX = 'Follow|Follow Back'
+UNFOLLOW_REGEX = 'Following|Requested'
 
 
 def handle_blogger(device,
@@ -105,11 +107,12 @@ def _iterate_over_followers(device, interaction, is_follow_limit_reached, storag
                                  className='android.widget.EditText')
         return row_search.exists()
 
+    prev_screen_iterated_followers = []
     while True:
         print("Iterate over visible followers")
         random_sleep()
-        screen_iterated_followers = 0
-        screen_skipped_followers = 0
+        screen_iterated_followers = []
+        screen_skipped_followers_count = 0
 
         try:
             for item in device.find(resourceId='com.instagram.android:id/follow_list_container',
@@ -121,14 +124,14 @@ def _iterate_over_followers(device, interaction, is_follow_limit_reached, storag
                     break
 
                 username = user_name_view.get_text()
-                screen_iterated_followers += 1
+                screen_iterated_followers.append(username)
 
                 if not is_myself and storage.check_user_was_interacted(username):
                     print("@" + username + ": already interacted. Skip.")
-                    screen_skipped_followers += 1
+                    screen_skipped_followers_count += 1
                 elif is_myself and storage.check_user_was_interacted_recently(username):
                     print("@" + username + ": already interacted in the last week. Skip.")
-                    screen_skipped_followers += 1
+                    screen_skipped_followers_count += 1
                 else:
                     print("@" + username + ": interact")
                     user_name_view.click()
@@ -153,9 +156,15 @@ def _iterate_over_followers(device, interaction, is_follow_limit_reached, storag
         if is_myself and scrolled_to_top():
             print(COLOR_OKGREEN + "Scrolled to top, finish." + COLOR_ENDC)
             return
-        elif screen_iterated_followers > 0:
+        elif len(screen_iterated_followers) > 0:
             load_more_button = device.find(resourceId='com.instagram.android:id/row_load_more_button')
-            need_swipe = screen_skipped_followers == screen_iterated_followers
+            load_more_button_exists = load_more_button.exists()
+
+            if not load_more_button_exists and screen_iterated_followers == prev_screen_iterated_followers:
+                print(COLOR_OKGREEN + "Iterated exactly the same followers twice, finish." + COLOR_ENDC)
+                return
+
+            need_swipe = screen_skipped_followers_count == len(screen_iterated_followers)
             list_view = device.find(resourceId='android:id/list',
                                     className='android.widget.ListView')
             if is_myself:
@@ -163,7 +172,7 @@ def _iterate_over_followers(device, interaction, is_follow_limit_reached, storag
                 list_view.scroll(DeviceFacade.Direction.TOP)
             else:
                 pressed_retry = False
-                if load_more_button.exists():
+                if load_more_button_exists:
                     retry_button = load_more_button.child(className='android.widget.ImageView')
                     if retry_button.exists():
                         retry_button.click()
@@ -176,6 +185,9 @@ def _iterate_over_followers(device, interaction, is_follow_limit_reached, storag
                 else:
                     print(COLOR_OKGREEN + "Need to scroll now" + COLOR_ENDC)
                     list_view.scroll(DeviceFacade.Direction.BOTTOM)
+
+            prev_screen_iterated_followers.clear()
+            prev_screen_iterated_followers += screen_iterated_followers
         else:
             print(COLOR_OKGREEN + "No followers were iterated, finish." + COLOR_ENDC)
             return
@@ -311,23 +323,26 @@ def _follow(device, username, follow_percentage):
 
     random_sleep()
 
-    follow_button = device.find(classNameMatches=TEXTVIEW_OR_BUTTON_REGEX,
-                                clickable=True,
-                                text='Follow')
+    profile_header_actions_layout = device.find(resourceId='com.instagram.android:id/profile_header_actions_top_row',
+                                                className='android.widget.LinearLayout')
+    if not profile_header_actions_layout.exists():
+        print(COLOR_FAIL + "Cannot find profile actions." + COLOR_ENDC)
+        return False
+
+    follow_button = profile_header_actions_layout.child(classNameMatches=TEXTVIEW_OR_BUTTON_REGEX,
+                                                        clickable=True,
+                                                        textMatches=FOLLOW_REGEX)
     if not follow_button.exists():
-        follow_button = device.find(classNameMatches=TEXTVIEW_OR_BUTTON_REGEX,
-                                    clickable=True,
-                                    text='Follow Back')
-    if not follow_button.exists():
-        unfollow_button = device.find(classNameMatches=TEXTVIEW_OR_BUTTON_REGEX,
-                                      clickable=True,
-                                      text='Following')
+        unfollow_button = profile_header_actions_layout.child(classNameMatches=TEXTVIEW_OR_BUTTON_REGEX,
+                                                              clickable=True,
+                                                              textMatches=UNFOLLOW_REGEX)
         if unfollow_button.exists():
             print(COLOR_OKGREEN + "You already follow @" + username + "." + COLOR_ENDC)
             return False
         else:
-            print(COLOR_FAIL + "Cannot find neither Follow button, nor Following button. Maybe not "
+            print(COLOR_FAIL + "Cannot find neither Follow button, nor Unfollow button. Maybe not "
                                "English language is set?" + COLOR_ENDC)
+            save_crash(device)
             switch_to_english(device)
             raise LanguageChangedException()
 
