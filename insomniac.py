@@ -346,7 +346,7 @@ def _parse_arguments():
                         help='add this flag to use an old version of uiautomator. Use it only if you experience '
                              'problems with the default version',
                         action='store_true')
-    parser.add_argument('--follow-if-no-photo',
+    parser.add_argument('--follow_if_no_photo',
                         help='follow private/empty in only-like mode',
                         metavar='ON / OFF',
                         default='ON')
