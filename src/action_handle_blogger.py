@@ -233,7 +233,7 @@ def _interact_with_user(device,
         else:
             followed = _follow(device,
                                username,
-                               follow_percentage) if True profile_filter.can_follow_private_or_empty() else False
+                               follow_percentage)
         if not followed:
             print(COLOR_OKGREEN + "Skip user." + COLOR_ENDC)
         return False, followed
