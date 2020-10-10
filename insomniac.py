@@ -87,7 +87,7 @@ def main():
         session_state.args = args.__dict__
         sessions.append(session_state)
 
-        screen_care() #Turn on the device screen
+        screen_care(args.screen_care) #Turn on the device screen
 
         print_timeless(COLOR_WARNING + "\n-------- START: " + str(session_state.startTime) + " --------" + COLOR_ENDC)
         open_instagram(device_id)
@@ -138,8 +138,9 @@ def main():
         session_state.finishTime = datetime.now()
         print_timeless(COLOR_WARNING + "-------- FINISH: " + str(session_state.finishTime) + " --------" + COLOR_ENDC)
         
-        print("Turning OFF screen for sleeping time..")
-        os.popen("adb shell input keyevent 26")
+        if args.screen_care == "on":
+            print("Turning OFF screen for sleeping time..")
+            os.popen("adb shell input keyevent 26")
 
         if args.repeat:
             print_full_report(sessions)
@@ -345,6 +346,10 @@ def _parse_arguments():
                         help='add this flag to use an old version of uiautomator. Use it only if you experience '
                              'problems with the default version',
                         action='store_true')
+    parser.add_argument('--follow-if-no-photo',
+                        help='follow private/empty in only-like mode',
+                        metavar='ON / OFF',
+                        default='ON')
     parser.add_argument('--screen_care',
                         help='take care of your device screen by turning off during sleeping time',
                         metavar='ON / OFF',
