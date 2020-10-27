@@ -11,6 +11,8 @@ from src.utils import *
 FOLLOWERS_BUTTON_ID_REGEX = 'com.instagram.android:id/row_profile_header_followers_container' \
                             '|com.instagram.android:id/row_profile_header_container_followers'
 TEXTVIEW_OR_BUTTON_REGEX = 'android.widget.TextView|android.widget.Button'
+LINEARLAYOUR_OR_LISTVIEW = 'android.widget.LinearLayout' \
+                           '|android.widget.ListView'
 FOLLOW_REGEX = 'Follow|Follow Back'
 UNFOLLOW_REGEX = 'Following|Requested'
 
@@ -66,12 +68,13 @@ def handle_hashtags(device,
 
     if not _open_hashtags(device, hashtag):
         return
-    _iterate_over_followers(device, interaction, is_follow_limit_reached, storage, on_interaction, False)
+    _iterate_over_likers(device, interaction, is_follow_limit_reached, storage, on_interaction)
 
 def _open_hashtags(device, hashtag):
     if hashtag is not None:
         navigate(device, Tabs.SEARCH)
         print("Search for #" + hashtag)
+        random_sleep()
         search_edit_text = device.find(resourceId='com.instagram.android:id/action_bar_search_edit_text',
                                        className='android.widget.EditText')
         search_edit_text.set_text(hashtag)
@@ -79,13 +82,28 @@ def _open_hashtags(device, hashtag):
                                               index='2')
         search_hashtag_section.click()
         random_sleep()
-        nr_post = str(random.randint(1,5))
-        search_random_post = device.find (className='android.widget.ImageView',
-                                              index=nr_post)   
-        search_random_post.click()
-        search_likes_container = device.find(resourceId='com.instagram.android:id/like_row',
-                                           className='android.widget.RelativeLayout')
-        search_likes_container.click()
+
+        while True:
+            nr_post = str(random.randint(2,8))
+            search_random_post = device.find (className='android.widget.ImageView',
+                                              index=nr_post) 
+            search_random_post.click()
+            list_view = device.find(resourceId='android:id/list',
+                                    className='androidx.recyclerview.widget.RecyclerView')
+            random_sleep()
+            list_view.scroll(DeviceFacade.Direction.BOTTOM)
+            random_sleep()
+            search_likes_container = device.find(resourceId='com.instagram.android:id/like_row',
+                                             className='android.widget.RelativeLayout')
+            search_likes_container.click()
+            wrong_page = device.find(resourceId='com.instagram.android:id/row_profile_header_post_count_container',
+                                 className='android.widget.Button')
+            if  not wrong_page.exists():
+                break
+            device.back()
+            random_sleep()
+            device.back()
+            
     else:
         print("test")
     return True
@@ -143,6 +161,104 @@ def _scroll_to_bottom(device):
 
     while not is_at_least_one_follower():
         list_view.scroll(DeviceFacade.Direction.TOP)
+
+def _iterate_over_likers(device, interaction, is_follow_limit_reached, storage, on_interaction):
+    # Wait until list is rendered
+    device.find(resourceId='android:id/list',
+                className='android.widget.ListView').wait()
+
+    def scrolled_to_top():
+        row_search = device.find(resourceId='com.instagram.android:id/search_edit_text',
+                                 className='android.widget.EditText')
+        return row_search.exists()
+
+    prev_screen_iterated_likers = []
+    while True:
+        print("Iterate over visible likers")
+        random_sleep()
+        screen_iterated_likers = []
+        screen_skipped_likers_count = 0
+
+        try:
+            for item in device.find(resourceId='com.instagram.android:id/row_user_container_base',
+                                    className='android.widget.LinearLayout'):
+                user_info_view = item.child(index=1)
+                user_name_view = user_info_view.child(index=0)#.child()
+
+                if not user_name_view.exists(quick=True):
+                    print(COLOR_OKGREEN + "Next item not found: probably reached end of the screen." + COLOR_ENDC)
+                    break
+
+                username = user_name_view.get_text()
+                screen_iterated_likers.append(username)
+                is_myself = False
+                if not is_myself and storage.check_user_was_interacted(username):
+                    print("@" + username + ": already interacted. Skip.")
+                    screen_skipped_likers_count += 1
+                elif is_myself and storage.check_user_was_interacted_recently(username):
+                    print("@" + username + ": already interacted in the last week. Skip.")
+                    screen_skipped_likers_count += 1
+                else:
+                    print("@" + username + ": interact")
+                    user_name_view.click()
+
+                    #can_follow = not is_myself \
+                    #    and not is_follow_limit_reached() \
+                    #    and storage.get_following_status(username) == FollowingStatus.NONE
+                    can_follow = not is_myself \
+                        and storage.get_following_status(username) == FollowingStatus.NONE
+
+                    interaction_succeed, followed = interaction(device, username=username, can_follow=can_follow)
+                    storage.add_interacted_user(username, followed=followed)
+                    can_continue = True #on_interaction(succeed=interaction_succeed,
+                                         #         followed=followed)
+
+                    if not can_continue:
+                        return
+
+                    print("Back to likers list")
+                    device.back()
+        except IndexError:
+            print(COLOR_FAIL + "Cannot get next item: probably reached end of the screen." + COLOR_ENDC)
+
+        if is_myself and scrolled_to_top():
+            print(COLOR_OKGREEN + "Scrolled to top, finish." + COLOR_ENDC)
+            return
+        elif len(screen_iterated_followers) > 0:
+            load_more_button = device.find(resourceId='com.instagram.android:id/row_load_more_button')
+            load_more_button_exists = load_more_button.exists()
+
+            if not load_more_button_exists and screen_iterated_likers == prev_screen_iterated_likers:
+                print(COLOR_OKGREEN + "Iterated exactly the same followers twice, finish." + COLOR_ENDC)
+                return
+
+            need_swipe = screen_skipped_followers_count == len(screen_iterated_followers)
+            list_view = device.find(resourceId='android:id/list',
+                                    className='android.widget.ListView')
+            if is_myself:
+                print(COLOR_OKGREEN + "Need to scroll now" + COLOR_ENDC)
+                list_view.scroll(DeviceFacade.Direction.TOP)
+            else:
+                pressed_retry = False
+                if load_more_button_exists:
+                    retry_button = load_more_button.child(className='android.widget.ImageView')
+                    if retry_button.exists():
+                        retry_button.click()
+                        random_sleep()
+                        pressed_retry = True
+
+                if need_swipe and not pressed_retry:
+                    print(COLOR_OKGREEN + "All followers skipped, let's do a swipe" + COLOR_ENDC)
+                    list_view.swipe(DeviceFacade.Direction.BOTTOM)
+                else:
+                    print(COLOR_OKGREEN + "Need to scroll now" + COLOR_ENDC)
+                    list_view.scroll(DeviceFacade.Direction.BOTTOM)
+
+            prev_screen_iterated_likers.clear()
+            prev_screen_iterated_likers += screen_iterated_followers
+        else:
+            print(COLOR_OKGREEN + "No followers were iterated, finish." + COLOR_ENDC)
+            return
 
 
 def _iterate_over_followers(device, interaction, is_follow_limit_reached, storage, on_interaction, is_myself):
