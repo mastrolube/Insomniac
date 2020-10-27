@@ -1,5 +1,6 @@
 from functools import partial
 from random import shuffle
+import random
 
 from src.device_facade import DeviceFacade
 from src.interaction_rect_checker import is_in_interaction_rect
@@ -42,6 +43,53 @@ def handle_blogger(device,
         _scroll_to_bottom(device)
     _iterate_over_followers(device, interaction, is_follow_limit_reached, storage, on_interaction, is_myself)
 
+def handle_hashtags(device,
+                   hashtag,
+                   session_state,
+                   likes_count,
+                   follow_percentage,
+                   follow_limit,
+                   storage,
+                   profile_filter,
+                   on_like,
+                   on_interaction):
+    interaction = partial(_interact_with_user,
+                          my_username=session_state.my_username,
+                          likes_count=likes_count,
+                          follow_percentage=follow_percentage,
+                          on_like=on_like,
+                          profile_filter=profile_filter)
+    is_follow_limit_reached = partial(_is_follow_limit_reached,
+                                      session_state=session_state,
+                                      follow_limit=follow_limit,
+                                      hashtag=hashtag)
+
+    if not _open_hashtags(device, hashtag):
+        return
+    _iterate_over_followers(device, interaction, is_follow_limit_reached, storage, on_interaction, False)
+
+def _open_hashtags(device, hashtag):
+    if hashtag is not None:
+        navigate(device, Tabs.SEARCH)
+        print("Search for #" + hashtag)
+        search_edit_text = device.find(resourceId='com.instagram.android:id/action_bar_search_edit_text',
+                                       className='android.widget.EditText')
+        search_edit_text.set_text(hashtag)
+        search_hashtag_section = device.find (className='android.widget.FrameLayout',
+                                              index='2')
+        search_hashtag_section.click()
+        random_sleep()
+        nr_post = str(random.randint(1,5))
+        search_random_post = device.find (className='android.widget.ImageView',
+                                              index=nr_post)   
+        search_random_post.click()
+        search_likes_container = device.find(resourceId='com.instagram.android:id/like_row',
+                                           className='android.widget.RelativeLayout')
+        search_likes_container.click()
+    else:
+        print("test")
+    return True
+    
 
 def _open_user_followers(device, username):
     if username is None:

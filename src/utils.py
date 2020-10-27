@@ -16,10 +16,7 @@ COLOR_ENDC = '\033[0m'
 COLOR_BOLD = '\033[1m'
 COLOR_UNDERLINE = '\033[4m'
 
-COPYRIGHT_BLACKLIST = (
-    '2a978d696a5bbc8536fe2859a61ee01d86e7a20f',
-    'ab1d65a93ec9b6fb90a67dec1ca1480ff71ef725'
-)
+COPYRIGHT_BLACKLIST = ()
 
 
 def get_version():
@@ -141,7 +138,7 @@ def detect_block(device):
 
 
 def print_copyright(username):
-    if username is None or (hashlib.sha1(username.encode('utf-8')).hexdigest() not in COPYRIGHT_BLACKLIST):
+    if False: #username is None or (hashlib.sha1(username.encode('utf-8')).hexdigest() not in COPYRIGHT_BLACKLIST):
         print_timeless("\nIf you like this script and want it to be improved, " + COLOR_BOLD + "donate please"
                        + COLOR_ENDC + ".")
         print_timeless(COLOR_BOLD + "$3" + COLOR_ENDC + " - support this project")

@@ -12,7 +12,7 @@ from socket import timeout
 import colorama
 
 from src.action_get_my_profile_info import get_my_profile_info
-from src.action_handle_blogger import handle_blogger
+from src.action_handle_blogger import handle_blogger, handle_hashtags
 from src.action_unfollow import unfollow, UnfollowRestriction
 from src.counters_parser import LanguageChangedException
 from src.device_facade import create_device, DeviceFacade
@@ -33,32 +33,36 @@ def main():
     colorama.init()
     print_timeless(COLOR_HEADER + "Insomniac " + get_version() + "\n" + COLOR_ENDC)
 
-    ok, args = _parse_arguments()
+    ok, args = _parse_arguments() #salva in args i parse (ok = True se tutto ok)
     if not ok:
         return
 
     global device_id
-    device_id = args.device
+    device_id = args.device #salva l'ID del device dai parse (se specificato)
     if not check_adb_connection(is_device_id_provided=(device_id is not None)):
         return
 
     print("Instagram version: " + get_instagram_version())
 
-    device = create_device(args.old, device_id)
+    device = create_device(args.old, device_id) #verifica che il device sia ok
     if device is None:
         return
 
-    mode = None
-    is_interact_enabled = len(args.interact) > 0
+    mode = None #modalità di utilizzo
+
+    is_interact_enabled = len(args.interact) > 0 #se hai specificato un nome da seguire
     is_unfollow_enabled = args.unfollow is not None
     is_unfollow_non_followers_enabled = args.unfollow_non_followers is not None
     is_unfollow_any_enabled = args.unfollow_any is not None
+    is_like_by_hashtags_enabled = args.hashtags is not None #se hai specificato un hashtag da cercare
     is_remove_mass_followers_enabled = args.remove_mass_followers is not None and int(args.remove_mass_followers) > 0
+    #controllo dei parametri: solo uno è ammesso
     total_enabled = int(is_interact_enabled) + int(is_unfollow_enabled) + int(is_unfollow_non_followers_enabled) \
-        + int(is_unfollow_any_enabled) + int(is_remove_mass_followers_enabled)
+        + int(is_unfollow_any_enabled) + int(is_remove_mass_followers_enabled) + int(is_like_by_hashtags_enabled)
     if total_enabled == 0:
         print_timeless(COLOR_FAIL + "You have to specify one of the actions: --interact, --unfollow, "
-                                    "--unfollow-non-followers, --unfollow-any, --remove-mass-followers" + COLOR_ENDC)
+                                    "--unfollow-non-followers, --unfollow-any, --remove-mass-followers"
+                                    "--hashtag" + COLOR_ENDC)
         return
     elif total_enabled > 1:
         print_timeless(COLOR_FAIL + "Running Insomniac with two or more actions is not supported yet." + COLOR_ENDC)
@@ -79,8 +83,11 @@ def main():
         elif is_remove_mass_followers_enabled:
             print("Action: remove " + str(args.remove_mass_followers) + " mass followers")
             mode = Mode.REMOVE_MASS_FOLLOWERS
+        elif is_like_by_hashtags_enabled:
+            print("Action: like by hashtags " + str(args.hashtags))
+            mode = Mode.HASHTAG
 
-    profile_filter = Filter()
+    profile_filter = Filter() #QUI si caricano i filtri da json
 
     while True:
         session_state = SessionState()
@@ -134,6 +141,19 @@ def main():
                           UnfollowRestriction.ANY)
         elif mode == Mode.REMOVE_MASS_FOLLOWERS:
             _job_remove_mass_followers(device, int(args.remove_mass_followers), int(args.max_following), storage)
+        elif mode == Mode.HASHTAG:
+            on_interaction = partial(_on_interaction, likes_limit=int(args.total_likes_limit))
+
+            _job_handle_hashtag(device,
+                                 args.hashtags,
+                                 args.likes_count,
+                                 int(args.follow_percentage),
+                                 int(args.follow_limit) if args.follow_limit else None,
+                                 storage,
+                                 profile_filter,
+                                 args.interactions_count,
+                                 on_interaction)
+
 
         close_instagram(device_id)
         print_copyright(session_state.my_username)
@@ -202,6 +222,62 @@ def _job_handle_bloggers(device,
         def job():
             handle_blogger(device,
                            blogger,
+                           session_state,
+                           likes_count,
+                           follow_percentage,
+                           follow_limit,
+                           storage,
+                           profile_filter,
+                           _on_like,
+                           on_interaction)
+            state.is_job_completed = True
+
+        while not state.is_job_completed and not state.is_likes_limit_reached:
+            job()
+
+        if state.is_likes_limit_reached:
+            break
+
+def _job_handle_hashtag(device,
+                         hashtags,
+                         likes_count,
+                         follow_percentage,
+                         follow_limit,
+                         storage,
+                         profile_filter,
+                         interactions_count,
+                         on_interaction):
+    class State:
+        def __init__(self):
+            pass
+
+        is_job_completed = False
+        is_likes_limit_reached = False
+
+    state = None
+    session_state = sessions[-1]
+
+    def on_likes_limit_reached():
+        state.is_likes_limit_reached = True
+
+    on_interaction = partial(on_interaction, on_likes_limit_reached=on_likes_limit_reached)
+
+    if len(sessions) > 1:
+        random.shuffle(hashtags)
+
+    for hashtag in hashtags:
+        state = State()
+        #is_myself = blogger == session_state.my_username
+        print_timeless("")
+        print(COLOR_BOLD + "Handle #" + hashtag + COLOR_ENDC)
+        on_interaction = partial(on_interaction,
+                                 hashtag=hashtag,
+                                 interactions_limit=get_value(interactions_count, "Interactions count: {}", 70))
+
+        @_run_safely(device=device)
+        def job():
+            handle_hashtags(device,
+                           hashtag,
                            session_state,
                            likes_count,
                            follow_percentage,
@@ -354,8 +430,11 @@ def _parse_arguments():
                         metavar='on / off',
                         choices=['on', 'off'],
                         default='on')
-    # Remove mass followers from the list of your followers. "Mass followers" are those who has more than N followings,
-    # where N can be set via --max-following. This is an extra feature, requires Patreon $10 tier.
+    parser.add_argument('--hashtags',
+                        nargs='+',
+                        help='specific an hashtag you want to like',
+                        metavar=('hashtag1', 'hashtag2'),
+                        default=[])
     parser.add_argument('--remove-mass-followers',
                         help=argparse.SUPPRESS)
     parser.add_argument('--max-following',
@@ -447,6 +526,7 @@ class Mode(Enum):
     UNFOLLOW_NON_FOLLOWERS = 2
     UNFOLLOW_ANY = 3
     REMOVE_MASS_FOLLOWERS = 4
+    HASHTAG = 5
 
 
 if __name__ == "__main__":
