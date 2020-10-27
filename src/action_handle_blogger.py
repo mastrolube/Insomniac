@@ -82,8 +82,12 @@ def _open_hashtags(device, hashtag):
                                               index='2')
         search_hashtag_section.click()
         random_sleep()
-
+        failed = False
         while True:
+            if failed == True:
+                hashtag_result_view = device.find(resourceId='com.instagram.android:id/recycler_view',
+                                        className='androidx.recyclerview.widget.RecyclerView')
+                hashtag_result_view.scroll(DeviceFacade.Direction.BOTTOM)
             nr_post = str(random.randint(2,8))
             search_random_post = device.find (className='android.widget.ImageView',
                                               index=nr_post) 
@@ -103,6 +107,7 @@ def _open_hashtags(device, hashtag):
             device.back()
             random_sleep()
             device.back()
+            failed = True
             
     else:
         print("test")
